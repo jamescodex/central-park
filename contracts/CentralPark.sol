@@ -8,24 +8,21 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
-    using Counters for Counters.Counter;    
+    using Counters for Counters.Counter;
     Counters.Counter private idCounter;
-    Counters.Counter private tokensSold;    
 
     // mapping to store all tokens
     mapping(uint256 => Token) private tokens;
     // struct to define a token type
     struct Token {
-        uint256 tokenId;
         address payable seller;
         address payable owner;
         uint256 price;
         bool sold;
     }
 
-    event ReturnExcessFunds(string);
-    event GiftToken(address indexed to, uint256 tokenId, string message);    
-    event CreateToken (
+    event GiftToken(address indexed to, uint256 tokenId, string message);
+    event CreateToken(
         uint256 indexed tokenId,
         address seller,
         address owner,
@@ -33,105 +30,137 @@ contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
         bool sold
     );
 
-    constructor() ERC721("Central Park", "CTP") {}   
+    constructor() ERC721("Central Park", "CTP") {}
 
-    // mint a new token for "msg.sender" and place in market for sale
-    function addTokenToPark(uint256 _tokenPrice, string memory _tokenURI) public payable {  
-        require(_tokenPrice > 0, "Please increase the token price");        
+    modifier checkPrice(uint256 _tokenPrice){
+        require(_tokenPrice > 0, "Please increase the token price");
+        _;
+    }
+
+    modifier isOwner(uint _tokenId){
+                // first validate if caller is owner of token
+        require(
+            tokens[_tokenId].owner == msg.sender,
+            "Only owner of token can sell token"
+        );
+        _;
+    }
+    /// @dev mints a new token for "msg.sender" and place in market for sale
+    function addTokenToPark(uint256 _tokenPrice, string memory _tokenURI)
+        external
+        payable
+        checkPrice(_tokenPrice)
+    {
+        require(bytes(_tokenURI).length > 0, "Empty token uri");
         uint256 _tokenId = idCounter.current();
         idCounter.increment();
-        _mint(msg.sender, _tokenId);
+        _mint(address(this), _tokenId);
         _setTokenURI(_tokenId, _tokenURI);
         // create new Token and add to tokens mapping
         tokens[_tokenId] = Token(
-            _tokenId,
             payable(msg.sender),
             payable(address(this)),
             _tokenPrice,
             false
         );
-        _transfer(msg.sender, address(this), _tokenId);  
         // emit token minted event
-        emit CreateToken (
+        emit CreateToken(
             _tokenId,
             msg.sender,
             address(this),
             _tokenPrice,
             false
-        );        
+        );
     }
 
-    // owner of token can call this funcion to put already minted token 
-    // for sale in market
-    function sellParkToken(uint256 _tokenId) public payable {
-        // first validate if caller is owner of token
-        require(tokens[_tokenId].owner == msg.sender, "Only owner of token can sell token"); 
-        tokensSold.decrement(); 
+    /**
+     * @dev owner of token can call this funcion to put already minted token
+     * for sale in market
+     */
+    function sellParkToken(uint256 _tokenId, uint _tokenPrice) external payable isOwner(_tokenId) checkPrice(_tokenPrice)  {
+        require(tokens[_tokenId].sold, "Token is already on sale");
         Token storage token = tokens[_tokenId];
-        token.owner = payable(address(this));                    
+        token.owner = payable(address(this));
         token.seller = payable(msg.sender);
         token.sold = false;
+        token.price = _tokenPrice;
         _transfer(msg.sender, address(this), _tokenId);
     }
 
-    // buy a token from the list of tokens in the park
-    function buyParkToken(
-        uint256 _tokenId
-    ) public payable {  
+    /// @dev buy a token from the list of tokens in the park
+    function buyParkToken(uint256 _tokenId) external payable {
         uint tokenPrice = tokens[_tokenId].price;
-        address tokenSeller = tokens[_tokenId].seller;
         // confirm if buyer is sending enough funds
-        require(msg.value >= tokenPrice, "You did not send enough funds to buy token");
+        require(
+            msg.value == tokenPrice,
+            "You did not send enough funds to buy token"
+        );
+        address tokenSeller = tokens[_tokenId].seller;
         require(msg.sender != tokenSeller, "You can't buy your own token");
-        tokensSold.increment();
-        uint256 extra = msg.value - tokenPrice;
-        // transfer extra funds back to buyer if they sends excess funds by mistake
-        if (extra > 0) {
-            (bool reversed, ) = payable(msg.sender).call{value: extra}("");
-            require(reversed, "failed to send funds");
-            emit ReturnExcessFunds("Excess funds has been reversed back to your account");
-        }
         // update token properties
         tokens[_tokenId].owner = payable(msg.sender);
         tokens[_tokenId].seller = payable(address(0));
-        tokens[_tokenId].sold = true;        
+        tokens[_tokenId].sold = true;
+        tokens[_tokenId].price = 0;
         // tranfer token from contract to buyer
         _transfer(address(this), msg.sender, _tokenId);
         // pay token owner for their funds
-        (bool success,) = payable(tokenSeller).call{value: tokenPrice}("");
+        (bool success, ) = payable(tokenSeller).call{value: tokenPrice}("");
         require(success, "failed to send funds");
     }
 
-    // get a token from the park
-    function getParkToken(uint256 _tokenId) public view returns (
-        uint256 tokenId,
-        address payable seller,
-        address payable owner,
-        uint256 price,
-        bool sold
-    ) {
-        require(_tokenId < idCounter.current(), "Token does not exist in this park");
+    /// @dev cancel a sale of a token in the park
+    function cancelSale(uint _tokenId) public payable isOwner(_tokenId) {
+        require(!tokens[_tokenId].sold, "Token is already on sale");
+
+        Token storage token = tokens[_tokenId];
+        token.owner = payable(msg.sender);
+        token.seller = payable(address(0));
+        token.sold = true;
+        token.price = 0;
+        _transfer(address(this), msg.sender, _tokenId);
+    }
+
+    /// @dev get a token from the park
+    function getParkToken(uint256 _tokenId)
+        public
+        view
+        returns (
+            address payable seller,
+            address payable owner,
+            uint256 price,
+            bool sold
+        )
+    {
+        require(
+            _tokenId < idCounter.current(),
+            "Token does not exist in this park"
+        );
         Token memory parkToken = tokens[_tokenId];
-        tokenId = parkToken.tokenId;
+
         seller = parkToken.seller;
         owner = parkToken.owner;
         price = parkToken.price;
         sold = parkToken.sold;
     }
 
-    // gift a token to another user
-    function giftToken(address _to, uint256 _tokenId, string memory _message) public payable {
-        Token storage token = tokens[_tokenId];
-        // first validate token information
-        require(msg.sender == token.owner, "You can't gift this token because you don't own it");
-        require(_to != address(0), "You can't gift this token to an empty address");
+    /// @dev gift a token to another user
+    function giftToken(
+        address _to,
+        uint256 _tokenId,
+        string calldata _message
+    ) public payable isOwner(_tokenId) {
+        require(
+            _to != address(0),
+            "You can't gift this token to an empty address"
+        );
+        tokens[_tokenId].owner = payable(_to);
         // transfer token to receiver
         _transfer(msg.sender, _to, _tokenId);
-        token.owner     = payable(_to);
         emit GiftToken(_to, _tokenId, _message);
     }
 
-    // get count of tokens in park
+    /// @dev get count of tokens in park
     function tokensCount() public view returns (uint256) {
         return idCounter.current();
     }

@@ -12,7 +12,7 @@ const Gift = ({ giftToken, tokenId }) => {
   const handleShow = () => setShow(true);
   return (
     <>
-      <Button variant="dark" onClick={handleShow}>
+      <Button variant="dark" className="mt-2" onClick={handleShow}>
         Gift Out
       </Button>
 
