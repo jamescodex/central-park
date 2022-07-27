@@ -7,7 +7,7 @@ This is a decentralised NFT minting application that you can come to mint NFTs a
 ## Build Info
 ```
 # clone project
-$ git clone https://github.com/Emmanuel-umeh/Celo201-NFT-Marketplace.git
+$ git clone https://github.com/jamescodex/central-park.git
 
 # install dependencies
 $ yarn install
