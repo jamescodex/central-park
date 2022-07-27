@@ -32,19 +32,20 @@ contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
 
     constructor() ERC721("Central Park", "CTP") {}
 
-    modifier checkPrice(uint256 _tokenPrice){
+    modifier checkPrice(uint256 _tokenPrice) {
         require(_tokenPrice > 0, "Please increase the token price");
         _;
     }
 
-    modifier isOwner(uint _tokenId){
-                // first validate if caller is owner of token
+    modifier isOwner(uint _tokenId) {
+        // first validate if caller is owner of token
         require(
             tokens[_tokenId].owner == msg.sender,
             "Only owner of token can sell token"
         );
         _;
     }
+
     /// @dev mints a new token for "msg.sender" and place in market for sale
     function addTokenToPark(uint256 _tokenPrice, string memory _tokenURI)
         external
@@ -77,7 +78,12 @@ contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
      * @dev owner of token can call this funcion to put already minted token
      * for sale in market
      */
-    function sellParkToken(uint256 _tokenId, uint _tokenPrice) external payable isOwner(_tokenId) checkPrice(_tokenPrice)  {
+    function sellParkToken(uint256 _tokenId, uint _tokenPrice)
+        external
+        payable
+        isOwner(_tokenId)
+        checkPrice(_tokenPrice)
+    {
         require(tokens[_tokenId].sold, "Token is already on sale");
         Token storage token = tokens[_tokenId];
         token.owner = payable(address(this));
@@ -110,9 +116,9 @@ contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
     }
 
     /// @dev cancel a sale of a token in the park
-    function cancelSale(uint _tokenId) public payable isOwner(_tokenId) {
+    function cancelSale(uint _tokenId) public payable {
         require(!tokens[_tokenId].sold, "Token is already on sale");
-
+        require(tokens[_tokenId].seller == msg.sender, "Only seller can cancel the sale");
         Token storage token = tokens[_tokenId];
         token.owner = payable(msg.sender);
         token.seller = payable(address(0));
