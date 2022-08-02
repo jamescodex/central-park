@@ -35,6 +35,10 @@ contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
 
     constructor() ERC721("Central Park", "CTP") {}   
 
+    modifier onlyOwner(uint256 _tokenId){
+        require(msg.sender == tokens[_tokenId].owner, "Only the owner can access this function");
+        _;
+    }
     // mint a new token for "msg.sender" and place in market for sale
     function addTokenToPark(uint256 _tokenPrice, string memory _tokenURI) public payable {  
         require(_tokenPrice > 0, "Please increase the token price");        
@@ -63,9 +67,8 @@ contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
 
     // owner of token can call this funcion to put already minted token 
     // for sale in market
-    function sellParkToken(uint256 _tokenId) public payable {
+    function sellParkToken(uint256 _tokenId) public payable onlyOwner(_tokenId){
         // first validate if caller is owner of token
-        require(tokens[_tokenId].owner == msg.sender, "Only owner of token can sell token"); 
         tokensSold.decrement(); 
         Token storage token = tokens[_tokenId];
         token.owner = payable(address(this));                    
@@ -119,11 +122,14 @@ contract CentralPark is Ownable, ERC721URIStorage, ERC721Enumerable {
         sold = parkToken.sold;
     }
 
+    //Function using which the owner can change the price of tree
+    function changePrice(uint256 _tokenId, uint256 _price) external onlyOwner(_tokenId){
+        tokens[_tokenId].price = _price;
+    }
     // gift a token to another user
-    function giftToken(address _to, uint256 _tokenId, string memory _message) public payable {
+    function giftToken(address _to, uint256 _tokenId, string memory _message) public payable onlyOwner(_tokenId){
         Token storage token = tokens[_tokenId];
         // first validate token information
-        require(msg.sender == token.owner, "You can't gift this token because you don't own it");
         require(_to != address(0), "You can't gift this token to an empty address");
         // transfer token to receiver
         _transfer(msg.sender, _to, _tokenId);
